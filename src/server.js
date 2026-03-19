@@ -141,9 +141,12 @@ function getUiFlights(flights) {
 
 async function getFlights() {
   const res = await axios.get(FR24_URL, {
-    headers: { "User-Agent": "Mozilla/5.0" },
-    timeout: 15000
-  });
+  timeout: 10000,
+  headers: {
+    "User-Agent": "Mozilla/5.0",
+    "Accept": "application/json",
+  }
+});
 
   const rows =
     res.data?.result?.response?.airport?.pluginData?.schedule?.arrivals?.data || [];
