@@ -132,7 +132,7 @@ function flightsWithinMinutes(flights, minutes) {
 }
 
 function getUiFlights(flights) {
-  return flightsWithinMinutes(flights, 30)
+  return flightsWithinMinutes(flights, 35)
     .filter(isInternationalFlight)
     .filter((f) => !isCanceled(f))
     .filter((f) => !isDiverted(f))
@@ -207,7 +207,7 @@ async function processFlight(f) {
   if (!prev.notified30 && f.base) {
     const diff = f.base * 1000 - now;
 
-    if (diff > 0 && diff <= 30 * 60 * 1000 && !isCanceled(f) && !isDiverted(f)) {
+    if (diff > 0 && diff <= 32 * 60 * 1000 && !isCanceled(f) && !isDiverted(f)) {
       await sendPush(
         `Volo ${f.numero} da ${spokenOrigin}. Arrivo previsto a Firenze alle ${f.orario_base}.`
       );
