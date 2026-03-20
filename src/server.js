@@ -232,7 +232,7 @@ async function processFlight(f) {
 
   if (isDiverted(f) && !prev.diverted && prev.notified30) {
     await sendPush(
-      `Volo ${f.numero} da ${spokenOrigin}. Dirottato.`
+      `Volo ${f.numero} da ${spokenOrigin}. Dirottato. Non arriva a Firenze.`
     );
     prev.diverted = true;
   }
