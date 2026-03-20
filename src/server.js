@@ -9,7 +9,9 @@ app.use(express.json());
 
 const PORT = Number(process.env.PORT || 3000);
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS || 60000);
-
+const UI_WINDOW_MINUTES = 35;
+const PUSH_WINDOW_MINUTES = 32;
+const DISPLAY_TIME_ZONE = "Europe/Rome";
 const FR24_URL =
   "https://api.flightradar24.com/common/v1/airport.json?code=flr&plugin[]=schedule&plugin-setting[schedule][mode]=arrivals&page=1&limit=100";
 
@@ -92,7 +94,8 @@ function formatTime(epochSeconds) {
   if (!epochSeconds) return null;
   return new Date(epochSeconds * 1000).toLocaleTimeString("it-IT", {
     hour: "2-digit",
-    minute: "2-digit"
+    minute: "2-digit",
+    timeZone: DISPLAY_TIME_ZONE
   });
 }
 
@@ -132,7 +135,7 @@ function flightsWithinMinutes(flights, minutes) {
 }
 
 function getUiFlights(flights) {
-  return flightsWithinMinutes(flights, 35)
+  return flightsWithinMinutes(flights, UI_WINDOW_MINUTES)
     .filter(isInternationalFlight)
     .filter((f) => !isCanceled(f))
     .filter((f) => !isDiverted(f))
@@ -207,7 +210,12 @@ async function processFlight(f) {
   if (!prev.notified30 && f.base) {
     const diff = f.base * 1000 - now;
 
-    if (diff > 0 && diff <= 32 * 60 * 1000 && !isCanceled(f) && !isDiverted(f)) {
+    if (
+		diff > 0 &&
+		diff <= PUSH_WINDOW_MINUTES * 60 * 1000 &&
+		!isCanceled(f) &&
+		!isDiverted(f)
+	) {
       await sendPush(
         `Volo ${f.numero} da ${spokenOrigin}. Arrivo previsto a Firenze alle ${f.orario_base}.`
       );
@@ -254,7 +262,9 @@ async function runPoll() {
     const flights = await getFlights();
     const next30 = getUiFlights(flights);
 
-    lastPollTime = new Date().toLocaleString("it-IT");
+    lastPollTime = new Date().toLocaleString("it-IT", {
+  timeZone: DISPLAY_TIME_ZONE
+	});
     lastPollCount = next30.length;
     lastUiError = null;
 
@@ -397,10 +407,10 @@ app.get("/", (req, res) => {
   <div class="panel">
     <div><strong>Stato polling:</strong> <span id="status">...</span></div>
     <div class="small">Ultimo controllo: <span id="lastPollTime">-</span></div>
-    <div class="small">Arrivi entro 30 min: <span id="lastPollCount">-</span></div>
+   <div class="small">Arrivi entro 35 min: <span id="lastPollCount">-</span></div>
   </div>
 
-  <h2>Prossimi 30 minuti</h2>
+  <h2>Prossimi 35 minuti</h2>
   <div id="flights"></div>
 
   <script>
@@ -441,7 +451,7 @@ app.get("/", (req, res) => {
         const flights = Array.isArray(data.flights) ? data.flights : [];
 
         if (flights.length === 0) {
-          box.innerHTML = '<div class="card">Nessun arrivo internazionale entro 30 minuti</div>';
+          box.innerHTML = '<div class="card">Nessun arrivo internazionale entro 35 minuti</div>';
           return;
         }
 
