@@ -14,7 +14,7 @@ app.use(express.json());
 const PORT = Number(process.env.PORT || 3000);
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS || 60000);
 const DISPLAY_TIME_ZONE = "Europe/Rome";
-
+const bootTime = new Date().toISOString();
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
@@ -690,7 +690,8 @@ app.get("/health", (req, res) => {
     pollingActive,
     lastPollTime,
     lastPollCount,
-    lastUiError
+    lastUiError,
+    bootTime
   });
 });
 
@@ -747,4 +748,7 @@ app.post("/stop", (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Server attivo su http://localhost:${PORT}`);
+
+  // 🔥 avvio automatico polling
+  startPolling();
 });
