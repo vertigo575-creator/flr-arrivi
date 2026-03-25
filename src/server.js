@@ -186,8 +186,7 @@ function hasLanded(f) {
 }
 
 function getFlightId(f) {
-  // Id semplice ma abbastanza stabile per il monitoraggio base.
-  return `${f.numero}::${f.sched ?? f.base ?? "na"}`;
+  return f.numero || "N/A";
 }
 
 function getUiFlights(flights) {
@@ -253,7 +252,7 @@ if (statoNorm.includes("divert")) {
     prev.diverted = true;
     prev.closed = true;
 
-    await sendTelegram(`↪️ ${f.origine}`);
+   await sendTelegram(`↪️ ${f.numero} da ${f.origine} dirottato`);
 
     logEvent({
       type: "DIVERTED",
@@ -316,7 +315,7 @@ if (statoNorm.includes("cancel")) {
     // Se FR24 segnala atterrato e il volo era già stato notificato,
     // mandiamo la conferma di arrivo.
    if (hasLanded(f) && prev.notified && !prev.landed && !prev.closed) {
-	  await sendTelegram(`✅ ${f.origine}`);
+	 await sendTelegram(`✅ ${f.numero} da ${f.origine} atterrato a Firenze`);
 
 	  prev.landed = true;
 	  prev.closed = true;
