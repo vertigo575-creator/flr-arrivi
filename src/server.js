@@ -750,8 +750,7 @@ app.listen(PORT, () => {
   console.log(`Server attivo su http://localhost:${PORT}`);
 
 
-		//test TELEGRAM
-		sendTelegram("TEST CANALE OK");
+		
 		
 
   // 🔥 avvio automatico polling
