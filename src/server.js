@@ -186,7 +186,9 @@ function hasLanded(f) {
 }
 
 function getFlightId(f) {
-  return f.numero || "N/A";
+  return f.numero && f.numero !== "N/A"
+    ? f.numero
+    : `${f.origine}-${f.sched || "na"}`;
 }
 
 function getUiFlights(flights) {
@@ -234,8 +236,12 @@ async function processFlights(flights) {
 		  numero: f.numero,
 		  origine: f.origine,
 		  base: f.base,
+		  sched: f.sched,
 		  stato: f.stato
+		  
 };
+
+	
 
     prev.lastSeenAt = Date.now();
     prev.misses = 0;
@@ -243,6 +249,7 @@ async function processFlights(flights) {
     prev.origine = f.origine;
     prev.base = f.base;
     prev.stato = f.stato;
+	prev.sched = f.sched;
 	
 	const statoNorm = normalizeText(f.stato);
 
@@ -342,7 +349,7 @@ if (statoNorm.includes("cancel")) {
   state.misses = (state.misses || 0) + 1;
 
   const now = Date.now();
-  const baseTime = state.base ? state.base * 1000 : null;
+  const baseTime = (state.sched ?? state.base) ? (state.sched ?? state.base) * 1000 : null;
 
   // Caso neutro: il volo era aperto, ma non lo vediamo più su FLR
   // dopo ETA + 2 minuti. NON diciamo "atterrato", perché potrebbe
@@ -359,7 +366,7 @@ if (statoNorm.includes("cancel")) {
   ) {
     state.closed = true;
 
-    await sendTelegram(`⚠️ ${state.origine} non più su FLR`);
+    await sendTelegram(`⚠️ ${state.numero} da ${state.origine} probabilmente atterrato (non più tracciato)`);
 
     logEvent({
       type: "DISAPPEARED_FROM_FLR",
@@ -370,6 +377,12 @@ if (statoNorm.includes("cancel")) {
   }
 
   flightState.set(id, state);
+}
+
+for (const [id, state] of flightState.entries()) {
+  if (Date.now() - (state.lastSeenAt || 0) > 2 * 60 * 60 * 1000) {
+    flightState.delete(id);
+  }
 }
 }
 
@@ -428,6 +441,7 @@ function getNextPollInterval() {
       !state.landed &&
       !state.diverted &&
       !state.canceled;
+	  !state.closed;
 
     if (!isOpen) continue;
 
