@@ -107,18 +107,24 @@ function simplifyFlights(rows) {
     const base = real ?? est ?? sched;
 
     return {
-      numero: flight?.identification?.number?.default ?? "N/A",
-      origine: flight?.airport?.origin?.name ?? "N/A",
-      stato: flight?.status?.text ?? "",
-      sched,
-      est,
-      real,
-      base,
-      orario_sched: formatTime(sched),
-      orario_est: formatTime(est),
-      orario_real: formatTime(real),
-      orario_base: formatTime(base)
-    };
+  flightId: flight?.identification?.id ?? null,   // 🔥 ID vero FR24
+  numero: flight?.identification?.number?.default ?? "N/A",
+  origine: flight?.airport?.origin?.name ?? "N/A",
+
+  stato: flight?.status?.text ?? "",
+  statoGeneric: flight?.status?.generic?.status?.text ?? "",
+  diverted: flight?.status?.generic?.status?.diverted ?? false,
+
+  sched,
+  est,
+  real,
+  base,
+
+  orario_sched: formatTime(sched),
+  orario_est: formatTime(est),
+  orario_real: formatTime(real),
+  orario_base: formatTime(base)
+};
   });
 }
 
@@ -182,13 +188,18 @@ function isRelevantFlight(f) {
 
 function hasLanded(f) {
   const stato = normalizeText(f.stato);
-  return stato.includes("landed") || stato.includes("arrived") || !!f.real;
+  const statoGeneric = normalizeText(f.statoGeneric);
+
+  return (
+    statoGeneric === "landed" ||
+    stato.includes("landed") ||
+    stato.includes("arrived") ||
+    !!f.real
+  );
 }
 
 function getFlightId(f) {
-  return f.numero && f.numero !== "N/A"
-    ? f.numero
-    : `${f.origine}-${f.sched || "na"}`;
+  return f.flightId || f.numero || "N/A";
 }
 
 function getUiFlights(flights) {
@@ -224,7 +235,7 @@ async function processFlights(flights) {
     const id = getFlightId(f);
     seenIds.add(id);
 
-    const prev = flightState.get(id) || {
+   const prev = flightState.get(id) || {
 		  notified: false,
 		  landed: false,
 		  diverted: false,
@@ -233,33 +244,38 @@ async function processFlights(flights) {
 		  closed: false,
 		  lastSeenAt: 0,
 		  misses: 0,
+		  flightId: f.flightId,
 		  numero: f.numero,
 		  origine: f.origine,
 		  base: f.base,
 		  sched: f.sched,
-		  stato: f.stato
-		  
+		  stato: f.stato,
+		  statoGeneric: f.statoGeneric,
+		  divertedFlag: f.diverted
 };
 
 	
 
     prev.lastSeenAt = Date.now();
     prev.misses = 0;
-    prev.numero = f.numero;
-    prev.origine = f.origine;
-    prev.base = f.base;
-    prev.stato = f.stato;
+	prev.flightId = f.flightId;
+	prev.numero = f.numero;
+	prev.origine = f.origine;
+	prev.base = f.base;
 	prev.sched = f.sched;
+	prev.stato = f.stato;
+	prev.statoGeneric = f.statoGeneric;
+	prev.divertedFlag = f.diverted;
 	
 	const statoNorm = normalizeText(f.stato);
 
 // Se FR24 segnala dirottato, lo chiudiamo come dirottato certo
-if (statoNorm.includes("divert")) {
+if (f.diverted || statoNorm.includes("divert")) {
   if (!prev.diverted && !prev.closed) {
     prev.diverted = true;
     prev.closed = true;
 
-   await sendTelegram(`↪️ ${f.numero} da ${f.origine} dirottato`);
+    await sendTelegram(`↪️ ${f.numero} da ${f.origine} dirottato`);
 
     logEvent({
       type: "DIVERTED",
@@ -360,9 +376,9 @@ if (statoNorm.includes("cancel")) {
     !state.diverted &&
     !state.canceled &&
     !state.closed &&
-    state.misses >= 2 &&
+    state.misses >= 5 &&
     baseTime &&
-    now > baseTime + 2 * 60 * 1000
+    now > baseTime + 10 * 60 * 1000
   ) {
     state.closed = true;
 
@@ -440,7 +456,7 @@ function getNextPollInterval() {
       state.notified &&
       !state.landed &&
       !state.diverted &&
-      !state.canceled;
+      !state.canceled &&
 	  !state.closed;
 
     if (!isOpen) continue;
