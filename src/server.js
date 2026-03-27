@@ -143,6 +143,23 @@ async function getFlights() {
   return simplifyFlights(rows);
 }
 
+async function getFlightsPageMinus1() {
+  const url = FR24_URL.replace("page=1", "page=-1");
+
+  const res = await axios.get(url, {
+    timeout: 10000,
+    headers: {
+      "User-Agent": "Mozilla/5.0",
+      "Accept": "application/json"
+    }
+  });
+
+  const rows =
+    res.data?.result?.response?.airport?.pluginData?.schedule?.arrivals?.data || [];
+
+  return simplifyFlights(rows);
+}
+
 // =====================================
 // FILTRI VOLI RILEVANTI
 // =====================================
@@ -226,7 +243,8 @@ const flightState = new Map();
 // - se atterrato
 // - quando l'abbiamo visto l'ultima volta
 // - quante volte è "mancato" dal feed
-async function processFlights(flights) {
+
+async function processFlights(flights, flightsPrev = []) {
   const seenIds = new Set();
 
   for (const f of flights) {
@@ -242,6 +260,7 @@ async function processFlights(flights) {
 		  canceled: false,
 		  probableLanded: false,
 		  closed: false,
+		  firstSeenAt: Date.now(),
 		  lastSeenAt: 0,
 		  misses: 0,
 		  flightId: f.flightId,
@@ -354,32 +373,91 @@ if (statoNorm.includes("cancel")) {
     flightState.set(id, prev);
   }
 
+	
+
   // =====================================
   // GESTIONE VOLI SPARITI DAL FEED
   // =====================================
   // Se un volo notificato sparisce dal feed per più cicli,
   // possiamo almeno segnalarlo come "probabile atterrato".
+ 
+ const prevIds = new Set(flightsPrev.map(getFlightId));
+ const prevFlightsMap = new Map(
+  flightsPrev.map((f) => [getFlightId(f), f])
+	);
  for (const [id, state] of flightState.entries()) {
   if (seenIds.has(id)) continue;
 
-  state.misses = (state.misses || 0) + 1;
-
-  const now = Date.now();
-  const baseTime = (state.sched ?? state.base) ? (state.sched ?? state.base) * 1000 : null;
-
-  // Caso neutro: il volo era aperto, ma non lo vediamo più su FLR
-  // dopo ETA + 2 minuti. NON diciamo "atterrato", perché potrebbe
-  // anche essere stato dirottato e il feed non averlo mostrato bene.
-  if (
+  const shouldCheckPrevPage =
     state.notified &&
     !state.landed &&
     !state.diverted &&
     !state.canceled &&
-    !state.closed &&
-    state.misses >= 5 &&
-    baseTime &&
-    now > baseTime + 10 * 60 * 1000
-  ) {
+    !state.closed;
+
+  if (shouldCheckPrevPage && prevIds.has(id)) {
+  const prevFlight = prevFlightsMap.get(id);
+
+  if (prevFlight) {
+    if (hasLanded(prevFlight) && !state.landed && !state.closed) {
+      await sendTelegram(`✅ ${prevFlight.numero} da ${prevFlight.origine} atterrato a Firenze`);
+
+      state.landed = true;
+      state.closed = true;
+
+      logEvent({
+        type: "LANDED_FROM_PREV_PAGE",
+        id,
+        flight: prevFlight.numero,
+        origin: prevFlight.origine
+      });
+    } else if ((prevFlight.diverted || normalizeText(prevFlight.statoGeneric).includes("divert")) && !state.diverted && !state.closed) {
+      await sendTelegram(`↪️ ${prevFlight.numero} da ${prevFlight.origine} dirottato`);
+
+      state.diverted = true;
+      state.closed = true;
+
+      logEvent({
+        type: "DIVERTED_FROM_PREV_PAGE",
+        id,
+        flight: prevFlight.numero,
+        origin: prevFlight.origine
+      });
+    }
+  }
+	else {
+  // aggiorno lo stato anche se non è chiuso
+  state.base = prevFlight.base;
+  state.stato = prevFlight.stato;
+  state.statoGeneric = prevFlight.statoGeneric;
+  state.lastSeenAt = Date.now();
+}
+  flightState.set(id, state);
+  continue;
+}
+
+  state.misses = (state.misses || 0) + 1;
+
+  const now = Date.now();
+  const trackingExpired =
+  state.firstSeenAt &&
+  now > state.firstSeenAt + 59 * 60 * 1000;
+	const baseTime = state.base ? state.base * 1000 : null;	
+
+  // Caso neutro: il volo era aperto, ma non lo vediamo più su FLR
+  // dopo ETA + 2 minuti. NON diciamo "atterrato", perché potrebbe
+  // anche essere stato dirottato e il feed non averlo mostrato bene.
+ if (
+  trackingExpired &&
+  state.notified &&
+  !state.landed &&
+  !state.diverted &&
+  !state.canceled &&
+  !state.closed &&
+  state.misses >= 5 &&
+  baseTime &&
+  now > baseTime + 10 * 60 * 1000
+) {
     state.closed = true;
 
     await sendTelegram(`⚠️ ${state.numero} da ${state.origine} probabilmente atterrato (non più tracciato)`);
@@ -415,7 +493,8 @@ async function poll() {
   pollInProgress = true;
 
   try {
-    const flights = await getFlights();
+	const flights = await getFlights();
+	let flightsPrev = [];
     const relevantUiFlights = getUiFlights(flights);
 
     lastPollTime = new Date().toLocaleString("it-IT", {
@@ -429,8 +508,23 @@ async function poll() {
       totalFlights: flights.length,
       relevantFlights: relevantUiFlights.length
     });
+	const currentIds = new Set(flights.map(getFlightId));
 
-    await processFlights(flights);
+	const hasMissingTrackedFlights = [...flightState.entries()].some(([id, state]) => {
+	const isOpen =
+    state.notified &&
+    !state.landed &&
+    !state.diverted &&
+    !state.canceled &&
+    !state.closed;
+
+	return isOpen && !currentIds.has(id);
+});
+
+if (hasMissingTrackedFlights) {
+  flightsPrev = await getFlightsPageMinus1();
+}
+    await processFlights(flights, flightsPrev);
   } catch (err) {
     lastUiError = err.message;
 
