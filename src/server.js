@@ -331,28 +331,25 @@ if (statoNorm.includes("cancel")) {
     // =====================================
     // Invia una notifica una sola volta quando il volo entra
     // nella finestra dei prossimi 30 minuti.
-   if (f.base && !prev.notified) {
-      const diff = f.base * 1000 - Date.now();
-	  if (prev.base && prev.base !== f.base) {
-		prev.notified = false;
-	}
+  if (!prev.notified && f.base) {
+  const diff = f.base * 1000 - Date.now();
 
-      if (diff > 0 && diff <= 30 * 60 * 1000) {
-        await sendTelegram(
-          `✈️ ${f.numero} da ${f.origine}. Arrivo previsto a Firenze alle ${f.orario_base || "-"}`
-        );
+  if (diff > 0 && diff <= 30 * 60 * 1000) {
+    await sendTelegram(
+      `✈️ ${f.numero} da ${f.origine}. Arrivo previsto a Firenze alle ${f.orario_base || "-"}`
+    );
 
-        prev.notified = true;
+    prev.notified = true;
 
-        logEvent({
-          type: "NOTIFIED_30",
-          id,
-          flight: f.numero,
-          origin: f.origine,
-          time: f.orario_base || null
-        });
-      }
-    }
+    logEvent({
+      type: "NOTIFIED_30",
+      id,
+      flight: f.numero,
+      origin: f.origine,
+      time: f.orario_base || null
+    });
+  }
+}
 
     // =====================================
     // NOTIFICA ATTERRAGGIO
