@@ -331,8 +331,11 @@ if (statoNorm.includes("cancel")) {
     // =====================================
     // Invia una notifica una sola volta quando il volo entra
     // nella finestra dei prossimi 30 minuti.
-    if (!prev.notified && f.base) {
+   if (f.base && !prev.notified) {
       const diff = f.base * 1000 - Date.now();
+	  if (prev.base && prev.base !== f.base) {
+		prev.notified = false;
+	}
 
       if (diff > 0 && diff <= 30 * 60 * 1000) {
         await sendTelegram(
